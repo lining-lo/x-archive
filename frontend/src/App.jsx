@@ -22,6 +22,7 @@ export default function App() {
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
   const [newAccount, setNewAccount] = useState("");
+  const [includeReplies, setIncludeReplies] = useState(false);
 
   const refresh = useCallback(async () => {
     try {
@@ -43,7 +44,7 @@ export default function App() {
     setBusy(true);
     setMessage("");
     try {
-      const result = await syncAccount(username);
+      const result = await syncAccount(username, includeReplies);
       setMessage(`已同步 ${username}，新增 ${result.new_count} 条`);
       await refresh();
     } catch (e) {
@@ -65,6 +66,14 @@ export default function App() {
       <header className="topbar">
         <h1>X 选题档案</h1>
         <div className="topbar-actions">
+          <label className="check">
+            <input
+              type="checkbox"
+              checked={includeReplies}
+              onChange={(e) => setIncludeReplies(e.target.checked)}
+            />
+            含回复
+          </label>
           <input
             className="input"
             placeholder="账号名（不含 @）"
