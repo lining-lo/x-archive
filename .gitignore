@@ -1,4 +1,5 @@
 .env
+.twscrape/
 *.db
 *.db-wal
 *.db-shm

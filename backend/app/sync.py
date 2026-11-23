@@ -1,5 +1,6 @@
 import sqlite3
 from datetime import datetime, timezone
+from typing import Callable
 
 from app.provider_base import Provider, Tweet
 from app.store import (
@@ -34,7 +35,8 @@ def sync_account(
     username: str,
     include_replies: bool = False,
     include_retweets: bool = False,
-    max_pages: int = 50,
+    max_pages: int | None = None,
+    on_page: Callable[[dict], None] | None = None,
 ) -> dict:
     started = _now()
     account = provider.resolve_account(username)
@@ -54,12 +56,14 @@ def sync_account(
             # known tweet here: everything below the resume point is new.
             cursor = state["cursor"]
             completed = False
-            while pages < max_pages:
+            while max_pages is None or pages < max_pages:
                 page = provider.last_tweets(account.username, cursor, include_replies)
                 pages += 1
                 tweets = _filter(page.tweets, include_retweets, include_replies)
                 if tweets:
                     new_count += upsert_tweets(conn, tweets)
+                if on_page:
+                    on_page({"mode": "backfill", "pages": pages, "new_count": new_count})
                 if not page.has_next:
                     completed = True
                     break
@@ -70,16 +74,26 @@ def sync_account(
             )
             backfill_done = completed
         else:
-            # Incremental refresh: newest first, stop once we hit stored tweets.
+            # Incremental refresh: newest first. Stop once a whole page is
+            # already stored (a pinned tweet can appear first, so "any known
+            # tweet" would stop too early and skip genuinely new posts).
             cursor = None
-            while pages < max_pages:
+            while max_pages is None or pages < max_pages:
                 page = provider.last_tweets(account.username, cursor, include_replies)
                 pages += 1
                 tweets = _filter(page.tweets, include_retweets, include_replies)
-                reached_known = any(tweet_exists(conn, t.id) for t in tweets)
-                if tweets:
-                    new_count += upsert_tweets(conn, tweets)
-                if reached_known or not page.has_next:
+                if not tweets:
+                    if not page.has_next:
+                        break
+                    cursor = page.cursor
+                    continue
+                all_known = all(tweet_exists(conn, t.id) for t in tweets)
+                new_count += upsert_tweets(conn, tweets)
+                if on_page:
+                    on_page(
+                        {"mode": "incremental", "pages": pages, "new_count": new_count}
+                    )
+                if all_known or not page.has_next:
                     break
                 cursor = page.cursor
         conn.execute(

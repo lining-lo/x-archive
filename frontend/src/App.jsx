@@ -1,8 +1,10 @@
 import { useCallback, useEffect, useState } from "react";
 import { RefreshCw } from "lucide-react";
-import { listAccounts, listTweets, syncAccount } from "./api.js";
+import { listAccounts, listTweets, syncAccount, syncStatus } from "./api.js";
 import FilterBar from "./components/FilterBar.jsx";
 import TweetList from "./components/TweetList.jsx";
+
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 const EMPTY_FILTERS = {
   accountId: "",
@@ -43,12 +45,24 @@ export default function App() {
     if (!username) return;
     setBusy(true);
     setMessage("");
+    setError("");
     try {
-      const result = await syncAccount(username, includeReplies);
-      const hint = result.backfill_done
-        ? ""
-        : "（历史还没抓完，再点一次继续）";
-      setMessage(`已同步 ${username}，新增 ${result.new_count} 条${hint}`);
+      let job = await syncAccount(username, includeReplies);
+      while (job.state === "running") {
+        setMessage(`抓取中… 已入库 ${job.new_count} 条（第 ${job.pages} 页）`);
+        await sleep(1500);
+        job = await syncStatus(username);
+      }
+      if (job.state === "error") {
+        setError(job.error || "抓取失败");
+      } else if (job.state === "done") {
+        const hint = job.backfill_done ? "" : "（历史还没抓完，再点一次继续）";
+        setMessage(
+          `已同步 ${username}，新增 ${job.new_count} 条（共 ${job.pages} 页）${hint}`
+        );
+      } else {
+        setMessage(`已同步 ${username}`);
+      }
       await refresh();
     } catch (e) {
       setError(e.message);

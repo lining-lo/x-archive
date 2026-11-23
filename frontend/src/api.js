@@ -19,6 +19,9 @@ export const syncAccount = (username, includeReplies = false) =>
     { method: "POST" }
   ).then(json);
 
+export const syncStatus = (username) =>
+  fetch(`/api/accounts/${encodeURIComponent(username)}/sync/status`).then(json);
+
 export function listTweets(filters) {
   const params = new URLSearchParams();
   if (filters.accountId) params.set("account_id", filters.accountId);

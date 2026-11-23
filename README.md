@@ -5,10 +5,33 @@
 
 ## 准备
 
-1. 到 https://twitterapi.io 注册并获取 API Key。
-2. 复制 `.env.example` 为 `.env`，填入 `TWITTERAPI_IO_KEY`。
-3. 安装后端依赖：`pip install -r requirements.txt`
-4. 安装前端依赖：`cd frontend && npm install`
+1. 安装后端依赖：`pip install -r requirements.txt`
+2. 安装前端依赖：`cd frontend && npm install`
+3. 复制 `.env.example` 为 `.env`，按下面的「数据源」二选一填好。
+
+### 数据源一：twscrape（推荐，免费）
+
+用你自己的 X 账号登录态抓取，不花钱、不需要 API key。需要一个能访问 X 的网络环境。
+
+```bash
+# 1) 把 X 账号的 cookie 写进本地账号库（auth_token + ct0，从浏览器 F12 里拿）
+pip install twscrape
+python -m twscrape --db .twscrape/accounts.db add_cookie main
+
+# 2) 在 .env 里选它，并配好代理（国内直连不了 X）
+XARCHIVE_SOURCE=twscrape
+TWSCRAPE_DB=.twscrape/accounts.db
+XARCHIVE_PROXY=http://127.0.0.1:7890
+```
+
+### 数据源二：twitterapi.io（要 key、按量付费）
+
+到 https://twitterapi.io 注册获取 key，然后在 `.env` 里：
+
+```
+XARCHIVE_SOURCE=twitterapi
+TWITTERAPI_IO_KEY=你的key
+```
 
 ## 运行
 

@@ -55,7 +55,7 @@ def test_backfill_resumes_from_saved_cursor_on_next_click():
     assert len(query_tweets(conn)) == 3
 
 
-def test_incremental_after_backfill_stops_at_known():
+def test_incremental_continues_until_a_fully_known_page():
     conn = fresh()
     sync_account(
         conn,
@@ -65,12 +65,30 @@ def test_incremental_after_backfill_stops_at_known():
 
     provider = FakeProvider([
         TweetPage([make_tweet("4"), make_tweet("3"), make_tweet("2")], True, "c2"),
-        TweetPage([make_tweet("1")], False, None),  # must not be fetched
+        TweetPage([make_tweet("1")], False, None),  # all known -> stop here
     ])
     result = sync_account(conn, provider, "demo")
     assert result["mode"] == "incremental"
     assert result["backfill_done"] is True
-    assert provider.seen_cursors == [None]
+    assert provider.seen_cursors == [None, "c2"]
     assert result["new_count"] == 2
-    assert result["pages"] == 1
+    assert result["pages"] == 2
     assert len(query_tweets(conn)) == 4
+
+
+def test_incremental_stops_immediately_when_nothing_new():
+    conn = fresh()
+    sync_account(
+        conn,
+        FakeProvider([TweetPage([make_tweet("2"), make_tweet("1")], False, None)]),
+        "demo",
+    )
+    provider = FakeProvider([
+        TweetPage([make_tweet("2"), make_tweet("1")], False, None),
+        TweetPage([make_tweet("x")], False, None),  # must not be fetched
+    ])
+    result = sync_account(conn, provider, "demo")
+    assert result["mode"] == "incremental"
+    assert result["new_count"] == 0
+    assert result["pages"] == 1
+    assert provider.seen_cursors == [None]
