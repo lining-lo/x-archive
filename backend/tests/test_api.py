@@ -27,8 +27,11 @@ def test_sync_then_list(tmp_path):
     r = c.post("/api/accounts/demo/sync")
     assert r.status_code == 200
     assert r.json()["new_count"] == 2
+    assert r.json()["mode"] == "backfill"
+    assert r.json()["backfill_done"] is True
     accounts = c.get("/api/accounts").json()
     assert accounts[0]["username"] == "demo"
+    assert accounts[0]["backfill_done"] == 1
     tweets = c.get("/api/tweets", params={"account_id": "42"}).json()
     assert len(tweets) == 2
 

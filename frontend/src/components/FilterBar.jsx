@@ -33,6 +33,7 @@ export default function FilterBar({ accounts, filters, onChange, onReset, onSync
         {accounts.map((a) => (
           <option key={a.id} value={a.id}>
             @{a.username}
+            {a.last_sync_at && !a.backfill_done ? "（补历史中）" : ""}
           </option>
         ))}
       </select>

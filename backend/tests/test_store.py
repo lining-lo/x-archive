@@ -1,8 +1,10 @@
 from app.db import connect, init_db
 from app.provider_base import Account, Tweet
 from app.store import (
+    get_sync_state,
     list_accounts,
     query_tweets,
+    set_backfill_state,
     set_mark,
     tweet_exists,
     upsert_account,
@@ -69,3 +71,13 @@ def test_mark_star_and_note_roundtrip():
     set_mark(conn, "1", starred=False)
     assert query_tweets(conn, starred_only=True) == []
     assert query_tweets(conn)[0]["note"] == "选题A"
+
+
+def test_sync_state_roundtrip():
+    conn = fresh()
+    upsert_account(conn, Account(id="42", username="demo", display_name="Demo", raw={}))
+    assert get_sync_state(conn, "42") == {"cursor": None, "done": False}
+    set_backfill_state(conn, "42", cursor="tl:abc", done=False)
+    assert get_sync_state(conn, "42") == {"cursor": "tl:abc", "done": False}
+    set_backfill_state(conn, "42", cursor=None, done=True)
+    assert get_sync_state(conn, "42") == {"cursor": None, "done": True}

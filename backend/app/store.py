@@ -158,3 +158,23 @@ def list_accounts(conn: sqlite3.Connection) -> list[dict]:
         dict(row)
         for row in conn.execute("SELECT * FROM accounts ORDER BY username").fetchall()
     ]
+
+
+def get_sync_state(conn: sqlite3.Connection, account_id: str) -> dict:
+    row = conn.execute(
+        "SELECT backfill_cursor, backfill_done FROM accounts WHERE id = ?",
+        (account_id,),
+    ).fetchone()
+    if row is None:
+        return {"cursor": None, "done": False}
+    return {"cursor": row["backfill_cursor"], "done": bool(row["backfill_done"])}
+
+
+def set_backfill_state(
+    conn: sqlite3.Connection, account_id: str, *, cursor: str | None, done: bool
+) -> None:
+    conn.execute(
+        "UPDATE accounts SET backfill_cursor = ?, backfill_done = ? WHERE id = ?",
+        (cursor, 1 if done else 0, account_id),
+    )
+    conn.commit()

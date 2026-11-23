@@ -7,7 +7,9 @@ CREATE TABLE IF NOT EXISTS accounts (
     display_name TEXT,
     profile_json TEXT,
     created_at TEXT,
-    last_sync_at TEXT
+    last_sync_at TEXT,
+    backfill_cursor TEXT,
+    backfill_done INTEGER NOT NULL DEFAULT 0
 );
 
 CREATE TABLE IF NOT EXISTS tweets (
@@ -60,9 +62,22 @@ def connect(db_path: str) -> sqlite3.Connection:
     conn = sqlite3.connect(db_path, check_same_thread=False)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA journal_mode = WAL")
+    conn.execute("PRAGMA busy_timeout = 5000")
     return conn
 
 
 def init_db(conn: sqlite3.Connection) -> None:
     conn.executescript(SCHEMA)
+    _migrate_accounts(conn)
     conn.commit()
+
+
+def _migrate_accounts(conn: sqlite3.Connection) -> None:
+    """Add backfill columns to pre-existing databases."""
+    cols = {row["name"] for row in conn.execute("PRAGMA table_info(accounts)")}
+    if "backfill_cursor" not in cols:
+        conn.execute("ALTER TABLE accounts ADD COLUMN backfill_cursor TEXT")
+    if "backfill_done" not in cols:
+        conn.execute(
+            "ALTER TABLE accounts ADD COLUMN backfill_done INTEGER NOT NULL DEFAULT 0"
+        )

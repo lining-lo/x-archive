@@ -45,7 +45,10 @@ export default function App() {
     setMessage("");
     try {
       const result = await syncAccount(username, includeReplies);
-      setMessage(`已同步 ${username}，新增 ${result.new_count} 条`);
+      const hint = result.backfill_done
+        ? ""
+        : "（历史还没抓完，再点一次继续）";
+      setMessage(`已同步 ${username}，新增 ${result.new_count} 条${hint}`);
       await refresh();
     } catch (e) {
       setError(e.message);

@@ -2,7 +2,13 @@ import sqlite3
 from datetime import datetime, timezone
 
 from app.provider_base import Provider, Tweet
-from app.store import tweet_exists, upsert_account, upsert_tweets
+from app.store import (
+    get_sync_state,
+    set_backfill_state,
+    tweet_exists,
+    upsert_account,
+    upsert_tweets,
+)
 
 
 def _now() -> str:
@@ -28,32 +34,54 @@ def sync_account(
     username: str,
     include_replies: bool = False,
     include_retweets: bool = False,
-    max_pages: int = 200,
+    max_pages: int = 50,
 ) -> dict:
     started = _now()
     account = provider.resolve_account(username)
     upsert_account(conn, account)
 
-    cursor = None
+    state = get_sync_state(conn, account.id)
+    mode = "incremental" if state["done"] else "backfill"
+    backfill_done = state["done"]
+
     pages = 0
     new_count = 0
     status = "ok"
     message = ""
     try:
-        while pages < max_pages:
-            page = provider.last_tweets(account.username, cursor, include_replies)
-            pages += 1
-            tweets = _filter(page.tweets, include_retweets, include_replies)
-            if not tweets:
+        if mode == "backfill":
+            # Walk deeper into history from the saved cursor. Never stop on a
+            # known tweet here: everything below the resume point is new.
+            cursor = state["cursor"]
+            completed = False
+            while pages < max_pages:
+                page = provider.last_tweets(account.username, cursor, include_replies)
+                pages += 1
+                tweets = _filter(page.tweets, include_retweets, include_replies)
+                if tweets:
+                    new_count += upsert_tweets(conn, tweets)
                 if not page.has_next:
+                    completed = True
                     break
                 cursor = page.cursor
-                continue
-            reached_known = any(tweet_exists(conn, t.id) for t in tweets)
-            new_count += upsert_tweets(conn, tweets)
-            if reached_known or not page.has_next:
-                break
-            cursor = page.cursor
+                set_backfill_state(conn, account.id, cursor=cursor, done=False)
+            set_backfill_state(
+                conn, account.id, cursor=None if completed else cursor, done=completed
+            )
+            backfill_done = completed
+        else:
+            # Incremental refresh: newest first, stop once we hit stored tweets.
+            cursor = None
+            while pages < max_pages:
+                page = provider.last_tweets(account.username, cursor, include_replies)
+                pages += 1
+                tweets = _filter(page.tweets, include_retweets, include_replies)
+                reached_known = any(tweet_exists(conn, t.id) for t in tweets)
+                if tweets:
+                    new_count += upsert_tweets(conn, tweets)
+                if reached_known or not page.has_next:
+                    break
+                cursor = page.cursor
         conn.execute(
             "UPDATE accounts SET last_sync_at = ? WHERE id = ?",
             (_now(), account.id),
@@ -69,7 +97,14 @@ def sync_account(
             INSERT INTO sync_log (account_id, mode, started_at, finished_at, new_count, status, message)
             VALUES (?, ?, ?, ?, ?, ?, ?)
             """,
-            (account.id, "incremental", started, _now(), new_count, status, message),
+            (account.id, mode, started, _now(), new_count, status, message),
         )
         conn.commit()
-    return {"account_id": account.id, "new_count": new_count, "pages": pages, "status": status}
+    return {
+        "account_id": account.id,
+        "new_count": new_count,
+        "pages": pages,
+        "mode": mode,
+        "backfill_done": backfill_done,
+        "status": status,
+    }
