@@ -63,12 +63,15 @@
   `is_reply`, `is_retweet`, `is_quote`, `has_media`, `media_json`, `url`,
   `conversation_id`, `like_count`, `retweet_count`, `reply_count`, `quote_count`,
   `view_count`, `raw_json`, `inserted_at`, `updated_at`
-- `tweets_fts`：FTS5 虚拟表，索引 `text`，用于关键词全文检索
 - `marks`：`tweet_id`(PK), `starred`(bool), `note`(text), `updated_at`
 - `sync_log`：`id`, `account_id`, `mode`, `started_at`, `finished_at`,
   `new_count`, `status`, `message`
 
 唯一键为 tweet id，所有写入走 upsert，保证重复抓取幂等。
+
+关键词检索：直接用 SQL `LIKE %关键词%` 子串匹配。原因是数据量小（单账号量级）、
+且帖子多为中文，LIKE 子串匹配对中文天然可用，比 FTS5 更简单可靠。若将来数据量
+明显变大，再考虑引入全文索引。
 
 ## 5. 抓取流程
 
@@ -91,7 +94,7 @@
 ## 6. 界面
 
 - 顶部：账号切换、「刷新」按钮、同步状态（上次同步时间 / 本次新增 N 条）。
-- 筛选栏：关键词（FTS）、时间范围、是否带图、内容类型（原创 / 引用 / 回复 / 转推）。
+- 筛选栏：关键词（子串匹配）、时间范围、是否带图、内容类型（原创 / 引用 / 回复 / 转推）。
 - 列表：按时间倒序，展示正文、时间、媒体缩略图、互动数、回复/引用标记。
 - 每条操作：标星（图标按钮）、备注（可就地编辑）。
 - 视图：默认全部；可切换"只看标星"。
@@ -110,7 +113,7 @@
 
 ## 9. 技术栈
 
-- 后端：Python + FastAPI + SQLite(FTS5) + httpx。
+- 后端：Python + FastAPI + SQLite + httpx。
 - 前端：轻量单页应用（Vite + React），本地开发服务器运行。
 - 测试：针对抓取解析与 upsert 幂等性的单元测试，用假 provider / 固定 JSON fixture，
   不依赖真实 API 计费。
